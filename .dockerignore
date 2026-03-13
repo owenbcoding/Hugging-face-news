@@ -1,0 +1,35 @@
+# Git and IDE
+.git
+.gitignore
+.vscode
+.idea
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+env
+ENV
+
+# Environment and secrets (pass at runtime)
+.env
+.env.local
+.env.*.local
+
+# Runtime state (use volume instead)
+seen.json
+
+# Docs and local config (not needed in image)
+README.md
+*.md
+ecosystem.config.cjs
+hugging-face-bot.service
+run.sh
+
+# OS
+.DS_Store
+Thumbs.db

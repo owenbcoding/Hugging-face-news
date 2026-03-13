@@ -29,13 +29,26 @@ cp .env.example .env
 
 ## Run
 
-**Option A – terminal (one-off):**
+**Option A – Docker (recommended):**
+
+1. Create `.env` from the template and fill in your values (see Setup above).
+2. Build and run:
+   ```bash
+   docker compose up -d
+   ```
+   Or build and run in the foreground to see logs:
+   ```bash
+   docker compose up --build
+   ```
+3. The bot stores `seen.json` in a Docker volume (`bot-seen`) so state persists across restarts.
+
+**Option B – terminal (one-off):**
 ```bash
 source .venv/bin/activate
 python bot.py
 ```
 
-**Option B – PM2 (recommended; survives reboot):**
+**Option C – PM2 (survives reboot without Docker):**
 
 Use PM2 so the bot runs in the background and restarts on crash. PM2 uses the project’s `.venv`, so **don’t** run `python3 bot.py` directly—that uses system Python and will fail with missing modules.
 
