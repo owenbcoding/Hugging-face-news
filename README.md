@@ -26,8 +26,9 @@ cp .env.example .env
 - **CHANNEL_ID**: the *text channel ID* you want the bot to post in  
   (Discord Developer Mode ON → right-click channel → Copy Channel ID)
 - **POLL_MINUTES**: poll interval (in minutes, default: 180 = every 3 hours)
-- **MAX_POSTS_PER_RUN**: maximum posts per polling run (default: 6)
+- **MAX_POSTS_PER_RUN**: maximum posts per polling run (default: 3)
 - **MAX_PER_SOURCE_PER_RUN**: maximum posts per source per run (default: 3)
+- **POST_DELAY_SECONDS**: delay between posts in seconds to avoid spam (default: 5)
 
 ## Run
 
@@ -83,4 +84,5 @@ Useful PM2 commands:
 - The bot stores seen items in `seen.json` to avoid reposting. This file is ignored by git.
 - If the feed is temporarily unreachable or blocked, the bot logs the error and tries again on the next poll.
 - In Docker, `SEEN_PATH` defaults to `/app/data/seen.json`; the `bot-seen` volume is mounted at `/app/data`.
+- The bot posts up to 3 articles every 3 hours by default, with a 5-second delay between posts to avoid channel spam.
 

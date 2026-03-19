@@ -24,8 +24,9 @@ FEEDS: List[Tuple[str, str]] = [
 
 # Allow override for Docker (e.g. /app/data/seen.json)
 SEEN_PATH = os.getenv("SEEN_PATH", "seen.json")
-MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "6"))  # Post items from all feeds in each batch
+MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "3"))  # Post items from all feeds in each batch
 MAX_PER_SOURCE = int(os.getenv("MAX_PER_SOURCE_PER_RUN", "3"))  # Max items per source per batch
+POST_DELAY_SECONDS = int(os.getenv("POST_DELAY_SECONDS", "5"))  # Delay between posts to avoid spam
 
 intents = discord.Intents.default()  # posting only; no message-content needed
 client = discord.Client(intents=intents)
@@ -278,13 +279,17 @@ async def poll_and_post():
         print("[Info] No new items to post")
         return
 
-    # Post to Discord
-    for item in new_items:
+    # Post to Discord with delay between posts to avoid spam
+    for i, item in enumerate(new_items):
         try:
             embed = to_embed(item)
             await channel.send(embed=embed)
             seen.add(item["uid"])
             print(f"[Posted] {item['source']}: {item['title'][:50]}...")
+            
+            # Add delay between posts (except after the last one)
+            if i < len(new_items) - 1:
+                await asyncio.sleep(POST_DELAY_SECONDS)
         except Exception as e:
             print(f"[Error] Failed to post {item['title'][:50]}: {e}")
 
