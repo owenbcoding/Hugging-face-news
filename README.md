@@ -25,7 +25,9 @@ cp .env.example .env
 - **DISCORD_TOKEN**: your bot token (Discord Developer Portal → your app → Bot)
 - **CHANNEL_ID**: the *text channel ID* you want the bot to post in  
   (Discord Developer Mode ON → right-click channel → Copy Channel ID)
-- **POLL_MINUTES**: poll interval (in minutes)
+- **POLL_MINUTES**: poll interval (in minutes, default: 180 = every 3 hours)
+- **MAX_POSTS_PER_RUN**: maximum posts per polling run (default: 6)
+- **MAX_PER_SOURCE_PER_RUN**: maximum posts per source per run (default: 3)
 
 ## Run
 

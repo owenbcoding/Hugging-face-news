@@ -24,8 +24,8 @@ FEEDS: List[Tuple[str, str]] = [
 
 # Allow override for Docker (e.g. /app/data/seen.json)
 SEEN_PATH = os.getenv("SEEN_PATH", "seen.json")
-MAX_POSTS_PER_RUN = 4  # Post items from all feeds in each batch
-MAX_PER_SOURCE = 3  # Max items per source per batch
+MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "6"))  # Post items from all feeds in each batch
+MAX_PER_SOURCE = int(os.getenv("MAX_PER_SOURCE_PER_RUN", "3"))  # Max items per source per batch
 
 intents = discord.Intents.default()  # posting only; no message-content needed
 client = discord.Client(intents=intents)
