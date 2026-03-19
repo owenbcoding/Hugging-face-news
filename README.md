@@ -29,7 +29,7 @@ cp .env.example .env
 
 ## Run
 
-**Option A – Docker (recommended):**
+**Option A – Docker (recommended, works on Raspberry Pi 24/7):**
 
 1. Create `.env` from the template and fill in your values (see Setup above).
 2. Build and run:
@@ -40,7 +40,8 @@ cp .env.example .env
    ```bash
    docker compose up --build
    ```
-3. The bot stores `seen.json` in a Docker volume (`bot-seen`) so state persists across restarts.
+3. The bot stores `seen.json` in a Docker volume (`bot-seen`) at `/app/data` so state persists across restarts.
+4. **Raspberry Pi**: Docker images support arm64/armv7. Build and run directly on your Pi; `restart: unless-stopped` keeps it running 24/7 and auto-starts after reboot.
 
 **Option B – terminal (one-off):**
 ```bash
@@ -79,4 +80,5 @@ Useful PM2 commands:
 
 - The bot stores seen items in `seen.json` to avoid reposting. This file is ignored by git.
 - If the feed is temporarily unreachable or blocked, the bot logs the error and tries again on the next poll.
+- In Docker, `SEEN_PATH` defaults to `/app/data/seen.json`; the `bot-seen` volume is mounted at `/app/data`.
 

@@ -22,7 +22,8 @@ FEEDS: List[Tuple[str, str]] = [
     ("Hugging Face Blog", "https://huggingface.co/blog/feed.xml"),
 ]
 
-SEEN_PATH = "seen.json"
+# Allow override for Docker (e.g. /app/data/seen.json)
+SEEN_PATH = os.getenv("SEEN_PATH", "seen.json")
 MAX_POSTS_PER_RUN = 4  # Post items from all feeds in each batch
 MAX_PER_SOURCE = 3  # Max items per source per batch
 
@@ -32,6 +33,10 @@ client = discord.Client(intents=intents)
 
 def load_seen() -> Set[str]:
     try:
+        path = os.path.abspath(SEEN_PATH)
+        dirpath = os.path.dirname(path)
+        if dirpath and not os.path.isdir(dirpath):
+            os.makedirs(dirpath, exist_ok=True)
         with open(SEEN_PATH, "r", encoding="utf-8") as f:
             return set(json.load(f))
     except FileNotFoundError:
@@ -41,6 +46,10 @@ def load_seen() -> Set[str]:
 
 
 def save_seen(seen: Set[str]) -> None:
+    path = os.path.abspath(SEEN_PATH)
+    dirpath = os.path.dirname(path)
+    if dirpath and not os.path.isdir(dirpath):
+        os.makedirs(dirpath, exist_ok=True)
     with open(SEEN_PATH, "w", encoding="utf-8") as f:
         json.dump(sorted(seen)[-2000:], f)  # keep last ~2000 IDs
 
