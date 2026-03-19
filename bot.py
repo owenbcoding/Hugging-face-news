@@ -132,11 +132,88 @@ def to_embed(item: Dict) -> discord.Embed:
     return embed
 
 
+def _print_channel_diagnostics():
+    """Print diagnostic info when channel access fails."""
+    print(f"[Diagnostic] CHANNEL_ID = {CHANNEL_ID!r} (type: {type(CHANNEL_ID).__name__})")
+    guilds = list(client.guilds)
+    if not guilds:
+        print(
+            "[Diagnostic] Bot is in ZERO servers. You must invite the bot to your Discord "
+            "server first. Use the OAuth2 URL Generator in the Discord Developer Portal."
+        )
+        return
+    print(f"[Diagnostic] Bot is in {len(guilds)} server(s):")
+    found = False
+    for g in guilds:
+        chans = [c for c in g.channels if isinstance(c, discord.TextChannel)]
+        ids = {c.id for c in chans}
+        if CHANNEL_ID in ids:
+            found = True
+            ch = g.get_channel(CHANNEL_ID)
+            print(f"  -> Found #{ch.name} in '{g.name}' (id: {g.id})")
+        print(f"  - '{g.name}' (id: {g.id}): {len(chans)} text channels")
+        for c in chans[:5]:  # first 5 as sample
+            print(f"      #{c.name} id={c.id}")
+        if len(chans) > 5:
+            print(f"      ... and {len(chans) - 5} more")
+    if not found:
+        print(
+            "[Diagnostic] CHANNEL_ID not in any server the bot is in. Either invite "
+            "the bot to the server containing that channel, or use a channel ID from "
+            "one of the servers listed above."
+        )
+
+
+def _find_channel_in_cache():
+    """Search guild cache for channel - bypasses API, can work when fetch_channel 404s."""
+    for guild in client.guilds:
+        # Text channels, voice, categories, etc.
+        ch = guild.get_channel(CHANNEL_ID)
+        if ch is not None:
+            return ch
+        # Threads (forum posts, public/private threads)
+        for thread in getattr(guild, "threads", []):
+            if thread.id == CHANNEL_ID:
+                return thread
+        # Some older discord.py versions store threads differently
+        for ch in guild.channels:
+            if ch.id == CHANNEL_ID:
+                return ch
+    return None
+
+
+async def get_post_channel():
+    """Get the target channel, or None if inaccessible."""
+    # 1. Quick cache lookup
+    channel = client.get_channel(CHANNEL_ID)
+    if channel is not None:
+        return channel
+    # 2. Search guild cache (bypasses API - can work when fetch returns 404)
+    channel = _find_channel_in_cache()
+    if channel is not None:
+        print(f"[Info] Resolved channel via cache: #{channel.name}")
+        return channel
+    # 3. API fetch
+    try:
+        return await client.fetch_channel(CHANNEL_ID)
+    except discord.NotFound:
+        print("[Error] Channel not found (Discord 10003: Unknown Channel).")
+        _print_channel_diagnostics()
+        return None
+    except discord.Forbidden:
+        print("[Error] Bot lacks permission to access the channel.")
+        _print_channel_diagnostics()
+        return None
+
+
 @tasks.loop(minutes=POLL_MINUTES)
 async def poll_and_post():
-    channel = client.get_channel(CHANNEL_ID)
+    # Brief delay on first run so guild/channel cache is fully populated
+    if poll_and_post.current_loop == 1:
+        await asyncio.sleep(3)
+    channel = await get_post_channel()
     if channel is None:
-        channel = await client.fetch_channel(CHANNEL_ID)
+        return
 
     seen = load_seen()
 
@@ -219,6 +296,14 @@ async def on_ready():
     print(f"✓ Logged in as {client.user}")
     print(f"✓ Watching {len(FEEDS)} feeds")
     print(f"✓ Polling every {POLL_MINUTES} minutes ({POLL_MINUTES / 60:.1f} hours)")
+
+    # Validate channel access before starting the poll loop
+    channel = await get_post_channel()
+    if channel is None:
+        print(f"ERROR: Cannot access channel {CHANNEL_ID}. Fix CHANNEL_ID and restart.")
+        exit(1)
+    print(f"✓ Target channel: #{channel.name}")
+
     poll_and_post.start()
 
 
