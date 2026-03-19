@@ -25,7 +25,7 @@ cp .env.example .env
 - **DISCORD_TOKEN**: your bot token (Discord Developer Portal → your app → Bot)
 - **CHANNEL_ID**: the *text channel ID* you want the bot to post in  
   (Discord Developer Mode ON → right-click channel → Copy Channel ID)
-- **POLL_MINUTES**: poll interval (in minutes, default: 180 = every 3 hours)
+- **POLL_MINUTES**: poll interval in minutes (default: 180 = every 3 hours, minimum 60)
 - **MAX_POSTS_PER_RUN**: how many articles to post each poll (default: 3, newest first)
 - **POST_DELAY_SECONDS**: delay between posts in seconds (default: 5)
 
@@ -42,7 +42,8 @@ cp .env.example .env
    ```bash
    docker compose up --build
    ```
-3. **Raspberry Pi**: Docker images support arm64/armv7. Build and run directly on your Pi; `restart: unless-stopped` keeps it running 24/7 and auto-starts after reboot.
+3. `seen.json` is stored in a Docker volume (`bot-seen`) so the bot doesn’t repost the same articles.
+4. **Raspberry Pi**: Docker images support arm64/armv7. Build and run directly on your Pi; `restart: unless-stopped` keeps it running 24/7 and auto-starts after reboot.
 
 **Option B – terminal (one-off):**
 ```bash
@@ -79,7 +80,7 @@ Useful PM2 commands:
 
 ## Notes
 
-- Each poll, the bot fetches the feed and posts the most recent articles (default: 3). No state file is used.
-- If the feed is temporarily unreachable or blocked, the bot logs the error and tries again on the next poll.
-- The bot posts up to 3 articles every 3 hours by default, with a 5-second delay between posts. The same articles may be reposted on later polls if no newer ones exist.
+- The bot polls every 3 hours (configurable), fetches the feed, and posts only **new** articles (up to 3). It tracks posted items in `seen.json` to avoid reposting.
+- If the feed is unreachable, the bot logs the error and retries on the next poll.
+- Poll interval has a minimum of 60 minutes to prevent accidental spam.
 

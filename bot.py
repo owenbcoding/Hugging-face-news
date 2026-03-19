@@ -1,7 +1,8 @@
 import os
+import json
 import asyncio
 import re
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Set, Tuple, Optional
 from html import unescape
 
 import aiohttp
@@ -14,7 +15,8 @@ load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
-POLL_MINUTES = int(os.getenv("POLL_MINUTES", "180"))  # 180 = every 3 hours
+POLL_MINUTES = max(60, int(os.getenv("POLL_MINUTES", "180")))  # min 60, default 180 = every 3 hours
+SEEN_PATH = os.getenv("SEEN_PATH", "seen.json")
 
 # Hugging Face news feeds
 FEEDS: List[Tuple[str, str]] = [
@@ -26,6 +28,27 @@ POST_DELAY_SECONDS = int(os.getenv("POST_DELAY_SECONDS", "5"))  # Delay between 
 
 intents = discord.Intents.default()  # posting only; no message-content needed
 client = discord.Client(intents=intents)
+
+
+def load_seen() -> Set[str]:
+    try:
+        dirpath = os.path.dirname(os.path.abspath(SEEN_PATH))
+        if dirpath and not os.path.isdir(dirpath):
+            os.makedirs(dirpath, exist_ok=True)
+        with open(SEEN_PATH, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    except FileNotFoundError:
+        return set()
+    except Exception:
+        return set()
+
+
+def save_seen(seen: Set[str]) -> None:
+    dirpath = os.path.dirname(os.path.abspath(SEEN_PATH))
+    if dirpath and not os.path.isdir(dirpath):
+        os.makedirs(dirpath, exist_ok=True)
+    with open(SEEN_PATH, "w", encoding="utf-8") as f:
+        json.dump(sorted(seen)[-2000:], f)
 
 
 def _first_link(entry: dict) -> Optional[str]:
@@ -205,11 +228,13 @@ async def poll_and_post():
             continue
         all_items.extend(res)
 
-    # Take up to MAX_POSTS_PER_RUN most recent items
-    items_to_post = all_items[:MAX_POSTS_PER_RUN]
+    # Only post items we haven't posted before (avoid spam)
+    seen = load_seen()
+    new_items = [item for item in all_items if item["uid"] not in seen]
+    items_to_post = new_items[:MAX_POSTS_PER_RUN]
 
     if not items_to_post:
-        print("[Info] No items from feed")
+        print("[Info] No new items to post")
         return
 
     # Post to Discord with delay between posts
@@ -217,11 +242,14 @@ async def poll_and_post():
         try:
             embed = to_embed(item)
             await channel.send(embed=embed)
+            seen.add(item["uid"])
             print(f"[Posted] {item['source']}: {item['title'][:50]}...")
             if i < len(items_to_post) - 1:
                 await asyncio.sleep(POST_DELAY_SECONDS)
         except Exception as e:
             print(f"[Error] Failed to post {item['title'][:50]}: {e}")
+
+    save_seen(seen)
 
 
 @client.event

@@ -2,4 +2,11 @@ services:
   bot:
     build: .
     env_file: .env
+    environment:
+      - SEEN_PATH=/app/data/seen.json
+    volumes:
+      - bot-seen:/app/data
     restart: unless-stopped
+
+volumes:
+  bot-seen:
