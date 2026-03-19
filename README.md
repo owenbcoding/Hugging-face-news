@@ -26,9 +26,8 @@ cp .env.example .env
 - **CHANNEL_ID**: the *text channel ID* you want the bot to post in  
   (Discord Developer Mode ON → right-click channel → Copy Channel ID)
 - **POLL_MINUTES**: poll interval (in minutes, default: 180 = every 3 hours)
-- **MAX_POSTS_PER_RUN**: maximum posts per polling run (default: 3)
-- **MAX_PER_SOURCE_PER_RUN**: maximum posts per source per run (default: 3)
-- **POST_DELAY_SECONDS**: delay between posts in seconds to avoid spam (default: 5)
+- **MAX_POSTS_PER_RUN**: how many articles to post each poll (default: 3, newest first)
+- **POST_DELAY_SECONDS**: delay between posts in seconds (default: 5)
 
 ## Run
 
@@ -43,8 +42,7 @@ cp .env.example .env
    ```bash
    docker compose up --build
    ```
-3. The bot stores `seen.json` in a Docker volume (`bot-seen`) at `/app/data` so state persists across restarts.
-4. **Raspberry Pi**: Docker images support arm64/armv7. Build and run directly on your Pi; `restart: unless-stopped` keeps it running 24/7 and auto-starts after reboot.
+3. **Raspberry Pi**: Docker images support arm64/armv7. Build and run directly on your Pi; `restart: unless-stopped` keeps it running 24/7 and auto-starts after reboot.
 
 **Option B – terminal (one-off):**
 ```bash
@@ -81,8 +79,7 @@ Useful PM2 commands:
 
 ## Notes
 
-- The bot stores seen items in `seen.json` to avoid reposting. This file is ignored by git.
+- Each poll, the bot fetches the feed and posts the most recent articles (default: 3). No state file is used.
 - If the feed is temporarily unreachable or blocked, the bot logs the error and tries again on the next poll.
-- In Docker, `SEEN_PATH` defaults to `/app/data/seen.json`; the `bot-seen` volume is mounted at `/app/data`.
-- The bot posts up to 3 articles every 3 hours by default, with a 5-second delay between posts to avoid channel spam.
+- The bot posts up to 3 articles every 3 hours by default, with a 5-second delay between posts. The same articles may be reposted on later polls if no newer ones exist.
 

@@ -1,8 +1,7 @@
 import os
-import json
 import asyncio
 import re
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 from html import unescape
 
 import aiohttp
@@ -22,37 +21,11 @@ FEEDS: List[Tuple[str, str]] = [
     ("Hugging Face Blog", "https://huggingface.co/blog/feed.xml"),
 ]
 
-# Allow override for Docker (e.g. /app/data/seen.json)
-SEEN_PATH = os.getenv("SEEN_PATH", "seen.json")
-MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "3"))  # Post items from all feeds in each batch
-MAX_PER_SOURCE = int(os.getenv("MAX_PER_SOURCE_PER_RUN", "3"))  # Max items per source per batch
+MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "3"))  # Post this many items from feed each poll
 POST_DELAY_SECONDS = int(os.getenv("POST_DELAY_SECONDS", "5"))  # Delay between posts to avoid spam
 
 intents = discord.Intents.default()  # posting only; no message-content needed
 client = discord.Client(intents=intents)
-
-
-def load_seen() -> Set[str]:
-    try:
-        path = os.path.abspath(SEEN_PATH)
-        dirpath = os.path.dirname(path)
-        if dirpath and not os.path.isdir(dirpath):
-            os.makedirs(dirpath, exist_ok=True)
-        with open(SEEN_PATH, "r", encoding="utf-8") as f:
-            return set(json.load(f))
-    except FileNotFoundError:
-        return set()
-    except Exception:
-        return set()
-
-
-def save_seen(seen: Set[str]) -> None:
-    path = os.path.abspath(SEEN_PATH)
-    dirpath = os.path.dirname(path)
-    if dirpath and not os.path.isdir(dirpath):
-        os.makedirs(dirpath, exist_ok=True)
-    with open(SEEN_PATH, "w", encoding="utf-8") as f:
-        json.dump(sorted(seen)[-2000:], f)  # keep last ~2000 IDs
 
 
 def _first_link(entry: dict) -> Optional[str]:
@@ -209,17 +182,11 @@ async def get_post_channel():
 
 @tasks.loop(minutes=POLL_MINUTES)
 async def poll_and_post():
-    # Brief delay on first run so guild/channel cache is fully populated
-    if poll_and_post.current_loop == 1:
-        await asyncio.sleep(3)
     channel = await get_post_channel()
     if channel is None:
         return
 
-    seen = load_seen()
-
     headers = {
-        # Some feeds are picky; a browser-like UA reduces random 403/400s.
         "User-Agent": "Mozilla/5.0 (compatible; hugging-face-bot/1.0)",
     }
 
@@ -229,71 +196,32 @@ async def poll_and_post():
             return_exceptions=True,
         )
 
-        # Group items by source
-        items_by_source: Dict[str, List[Dict]] = {}
+    # Collect items from all feeds (RSS feeds are newest-first)
+    all_items: List[Dict] = []
+    for i, res in enumerate(results):
+        source_name = FEEDS[i][0]
+        if isinstance(res, Exception):
+            print(f"[Error] Feed fetch failed for {source_name}: {res}")
+            continue
+        all_items.extend(res)
 
-        for i, res in enumerate(results):
-            source_name = FEEDS[i][0]
-            if isinstance(res, Exception):
-                print(f"[Error] Feed fetch failed for {source_name}: {res}")
-                items_by_source[source_name] = []
-                continue
+    # Take up to MAX_POSTS_PER_RUN most recent items
+    items_to_post = all_items[:MAX_POSTS_PER_RUN]
 
-            source_items = []
-            for item in res:
-                if item["uid"] not in seen:
-                    source_items.append(item)
-            items_by_source[source_name] = source_items
-
-    # Distribute items from all sources in round-robin fashion
-    new_items: List[Dict] = []
-    source_indices = {source: 0 for source in items_by_source.keys()}
-
-    # Round-robin: take up to MAX_PER_SOURCE from each source
-    while len(new_items) < MAX_POSTS_PER_RUN:
-        added_any = False
-        for source_name in items_by_source.keys():
-            if len(new_items) >= MAX_POSTS_PER_RUN:
-                break
-            source_items = items_by_source[source_name]
-            idx = source_indices[source_name]
-
-            # Take items from this source (up to MAX_PER_SOURCE per source)
-            items_taken = 0
-            while (
-                idx < len(source_items)
-                and items_taken < MAX_PER_SOURCE
-                and len(new_items) < MAX_POSTS_PER_RUN
-            ):
-                new_items.append(source_items[idx])
-                idx += 1
-                items_taken += 1
-                added_any = True
-            source_indices[source_name] = idx
-
-        # If we didn't add any items, break to avoid infinite loop
-        if not added_any:
-            break
-
-    if not new_items:
-        print("[Info] No new items to post")
+    if not items_to_post:
+        print("[Info] No items from feed")
         return
 
-    # Post to Discord with delay between posts to avoid spam
-    for i, item in enumerate(new_items):
+    # Post to Discord with delay between posts
+    for i, item in enumerate(items_to_post):
         try:
             embed = to_embed(item)
             await channel.send(embed=embed)
-            seen.add(item["uid"])
             print(f"[Posted] {item['source']}: {item['title'][:50]}...")
-            
-            # Add delay between posts (except after the last one)
-            if i < len(new_items) - 1:
+            if i < len(items_to_post) - 1:
                 await asyncio.sleep(POST_DELAY_SECONDS)
         except Exception as e:
             print(f"[Error] Failed to post {item['title'][:50]}: {e}")
-
-    save_seen(seen)
 
 
 @client.event
