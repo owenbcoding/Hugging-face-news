@@ -21,7 +21,8 @@ ENV
 .env.*.local
 
 # Runtime state (use volume instead)
-seen.json
+data
+*.jsonl
 
 # Docs and local config (not needed in image)
 README.md

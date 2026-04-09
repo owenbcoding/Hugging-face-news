@@ -1,6 +1,6 @@
 # hugging-face-bot
 
-A Discord bot that posts Hugging Face news links from the Hugging Face blog RSS feed into a channel on a schedule.
+A Discord bot that posts Hugging Face news links from the Hugging Face blog RSS feed into a channel on a schedule using a shared news pipeline.
 
 - Feed source: `https://huggingface.co/blog/feed.xml`
 
@@ -25,9 +25,12 @@ cp .env.example .env
 - **DISCORD_TOKEN**: your bot token (Discord Developer Portal → your app → Bot)
 - **CHANNEL_ID**: the *text channel ID* you want the bot to post in  
   (Discord Developer Mode ON → right-click channel → Copy Channel ID)
-- **POLL_MINUTES**: poll interval in minutes (default: 180 = every 3 hours, minimum 60)
+- **POLL_MINUTES**: fallback poll interval in minutes for bots that use interval-based scheduling
 - **MAX_POSTS_PER_RUN**: how many articles to post each poll (default: 3, newest first)
 - **POST_DELAY_SECONDS**: delay between posts in seconds (default: 5)
+- **ARCHIVE_PATH**: append-only `.jsonl` archive of every posted article
+- **DEDUPE_INDEX_PATH**: JSON dedupe index keyed by `sha256(canonical_url)`
+- **POST_TEXT_DIGEST**: optionally send a plain text digest after the embeds (`true`/`false`)
 
 ## Run
 
@@ -42,7 +45,7 @@ cp .env.example .env
    ```bash
    docker compose up --build
    ```
-3. `seen.json` is stored in a Docker volume (`bot-seen`) so the bot doesn’t repost the same articles.
+3. The archive and dedupe index are stored in a Docker volume (`bot-data`) so the bot can dedupe, search old links, and repost from history later.
 4. **Raspberry Pi**: Docker images support arm64/armv7. Build and run directly on your Pi; `restart: unless-stopped` keeps it running 24/7 and auto-starts after reboot.
 
 **Option B – terminal (one-off):**
@@ -78,9 +81,18 @@ Useful PM2 commands:
 - `pm2 restart hugging-face-bot` – restart the bot
 - `pm2 stop hugging-face-bot` – stop the bot
 
+## Structure
+
+- `news_core.py`: shared pipeline logic for feed fetching, URL normalization, dedupe, archive storage, embeds, and `/latestlinks`
+- `huggingface_news_bot.py`: Hugging Face feed config plus channel/env wiring
+- `bot.py`: compatibility entrypoint so existing PM2 and manual commands still work
+
 ## Notes
 
-- The bot polls every 3 hours (configurable), fetches the feed, and posts only **new** articles (up to 3). It tracks posted items in `seen.json` to avoid reposting.
+- The Hugging Face bot is scheduled for `09:00 UTC` and `17:00 UTC` each day and posts only **new** articles (up to 3 per run).
+- It dedupes by `sha256(canonical_url)` instead of feed GUIDs, stores every posted link in an append-only `.jsonl` archive, and keeps a separate dedupe index.
+- Discord posts use embeds with a clickable title, cleaned summary, explicit `Read article` field, and a footer with source plus published date.
+- `/latestlinks` shows the last saved archive entries from Discord.
 - If the feed is unreachable, the bot logs the error and retries on the next poll.
 - Poll interval has a minimum of 60 minutes to prevent accidental spam.
 

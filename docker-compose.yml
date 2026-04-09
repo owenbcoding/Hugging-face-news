@@ -3,10 +3,11 @@ services:
     build: .
     env_file: .env
     environment:
-      - SEEN_PATH=/app/data/seen.json
+      - ARCHIVE_PATH=/app/data/news_archive.jsonl
+      - DEDUPE_INDEX_PATH=/app/data/dedupe_index.json
     volumes:
-      - bot-seen:/app/data
+      - bot-data:/app/data
     restart: unless-stopped
 
 volumes:
-  bot-seen:
+  bot-data:

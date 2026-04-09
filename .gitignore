@@ -38,7 +38,8 @@ env/
 .env.local
 
 # Runtime state
-seen.json
+data/
+*.jsonl
 
 # OS
 .DS_Store
