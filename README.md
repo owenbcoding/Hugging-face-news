@@ -25,6 +25,7 @@ cp .env.example .env
 - **DISCORD_TOKEN**: your bot token (Discord Developer Portal → your app → Bot)
 - **CHANNEL_ID**: the *text channel ID* you want the bot to post in  
   (Discord Developer Mode ON → right-click channel → Copy Channel ID)
+- **SCHEDULED_HOURS_UTC**: comma-separated UTC posting hours for the Hugging Face bot (default: `9,17`)
 - **POLL_MINUTES**: fallback poll interval in minutes for bots that use interval-based scheduling
 - **MAX_POSTS_PER_RUN**: how many articles to post each poll (default: 3, newest first)
 - **POST_DELAY_SECONDS**: delay between posts in seconds (default: 5)
@@ -89,7 +90,7 @@ Useful PM2 commands:
 
 ## Notes
 
-- The Hugging Face bot is scheduled for `09:00 UTC` and `17:00 UTC` each day and posts only **new** articles (up to 3 per run).
+- The Hugging Face bot uses `SCHEDULED_HOURS_UTC` and defaults to `09:00 UTC` and `17:00 UTC` each day, posting only **new** articles (up to 3 per run).
 - It dedupes by `sha256(canonical_url)` instead of feed GUIDs, stores every posted link in an append-only `.jsonl` archive, and keeps a separate dedupe index.
 - Discord posts use embeds with a clickable title, cleaned summary, explicit `Read article` field, and a footer with source plus published date.
 - `/latestlinks` shows the last saved archive entries from Discord.

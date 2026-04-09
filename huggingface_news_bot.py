@@ -22,7 +22,26 @@ POST_TEXT_DIGEST = os.getenv("POST_TEXT_DIGEST", "false").lower() in {"1", "true
 FEEDS: List[Tuple[str, str]] = [
     ("Hugging Face Blog", "https://huggingface.co/blog/feed.xml"),
 ]
-SCHEDULED_HOURS_UTC = (9, 17)
+
+
+def parse_scheduled_hours(raw_value: str) -> Tuple[int, ...]:
+    hours: List[int] = []
+    for part in raw_value.split(","):
+        value = part.strip()
+        if not value:
+            continue
+        hour = int(value)
+        if hour < 0 or hour > 23:
+            raise ValueError("SCHEDULED_HOURS_UTC values must be between 0 and 23")
+        hours.append(hour)
+
+    if not hours:
+        raise ValueError("SCHEDULED_HOURS_UTC must contain at least one hour")
+
+    return tuple(sorted(set(hours)))
+
+
+SCHEDULED_HOURS_UTC = parse_scheduled_hours(os.getenv("SCHEDULED_HOURS_UTC", "9,17"))
 
 
 def build_config() -> NewsBotConfig:
