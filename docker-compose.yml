@@ -1,5 +1,6 @@
 services:
   bot:
+    name: hugging-face-news-bot:latest
     build: .
     env_file: .env
     environment:
