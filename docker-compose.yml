@@ -1,3 +1,5 @@
+# Under `services.<name>`, only valid Compose keys are allowed.
+# For a fixed container name use `container_name`, not `name`.
 services:
   bot:
     name: hugging-face-news-bot:latest

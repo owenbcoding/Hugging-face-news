@@ -8,7 +8,7 @@ import os
 import re
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timezone
 from html import unescape
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -17,6 +17,7 @@ import aiohttp
 import discord
 import feedparser
 from discord import app_commands
+from discord.ext import tasks
 
 
 TRACKING_QUERY_PARAMS = {
@@ -37,14 +38,19 @@ TRACKING_QUERY_PARAMS = {
 class NewsBotConfig:
     bot_name: str
     channel_id: int
-    poll_minutes: int
     max_posts_per_run: int
     post_delay_seconds: int
     archive_path: str
     dedupe_index_path: str
     feeds: Sequence[Tuple[str, str]]
     post_text_digest: bool = False
-    scheduled_hours_utc: Sequence[int] = ()
+
+
+# Same fixed schedule as dev-news-bot (09:00 and 17:00 UTC; aligns with GMT in winter).
+UTC_POST_TIMES = (
+    time(hour=9, tzinfo=timezone.utc),
+    time(hour=17, tzinfo=timezone.utc),
+)
 
 
 def normalize_url(url: str) -> str:
@@ -92,20 +98,6 @@ def clean_summary(raw_summary: str) -> str:
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def next_scheduled_run(now: datetime, hours_utc: Sequence[int]) -> datetime:
-    normalized_hours = sorted({hour for hour in hours_utc if 0 <= hour <= 23})
-    if not normalized_hours:
-        raise ValueError("scheduled_hours_utc must contain at least one hour between 0 and 23")
-
-    for hour in normalized_hours:
-        candidate = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-        if candidate > now:
-            return candidate
-
-    tomorrow = now + timedelta(days=1)
-    return tomorrow.replace(hour=normalized_hours[0], minute=0, second=0, microsecond=0)
 
 
 def parse_entry_published_at(entry: Any) -> Optional[str]:
@@ -242,7 +234,6 @@ class NewsBotClient(discord.Client):
             dedupe_index_path=config.dedupe_index_path,
         )
         self.tree = app_commands.CommandTree(self)
-        self._poll_task: Optional[asyncio.Task[None]] = None
         self._commands_synced = False
         self._register_commands()
 
@@ -274,20 +265,10 @@ class NewsBotClient(discord.Client):
                 allowed_mentions=discord.AllowedMentions.none(),
             )
 
-    async def setup_hook(self) -> None:
-        self._poll_task = asyncio.create_task(self._poll_loop())
-
     async def on_ready(self) -> None:
         print(f"✓ Logged in as {self.user}")
         print(f"✓ Watching {len(self.config.feeds)} feeds")
-        if self.config.scheduled_hours_utc:
-            schedule_label = ", ".join(f"{hour:02d}:00" for hour in sorted(self.config.scheduled_hours_utc))
-            print(f"✓ Scheduled for {schedule_label} UTC each day")
-        else:
-            print(
-                f"✓ Polling every {self.config.poll_minutes} minutes "
-                f"({self.config.poll_minutes / 60:.1f} hours)"
-            )
+        print("✓ Scheduled posts at 09:00 UTC and 17:00 UTC")
 
         channel = await self.get_post_channel()
         if channel is None:
@@ -304,6 +285,9 @@ class NewsBotClient(discord.Client):
             print(f"✓ Synced {len(synced)} application command(s)")
 
         print(f"✓ Target channel: #{channel.name}")
+
+        if not self.poll_and_post.is_running():
+            self.poll_and_post.start()
 
     def _print_channel_diagnostics(self) -> None:
         print(
@@ -362,26 +346,6 @@ class NewsBotClient(discord.Client):
             print("[Error] Bot lacks permission to access the channel.")
             self._print_channel_diagnostics()
             return None
-
-    async def _poll_loop(self) -> None:
-        await self.wait_until_ready()
-        while not self.is_closed():
-            try:
-                if self.config.scheduled_hours_utc:
-                    now = datetime.now(timezone.utc)
-                    run_at = next_scheduled_run(now, self.config.scheduled_hours_utc)
-                    sleep_seconds = max(1.0, (run_at - now).total_seconds())
-                    print(f"[Info] Next scheduled run at {run_at.strftime('%Y-%m-%d %H:%M:%S')} UTC")
-                    await asyncio.sleep(sleep_seconds)
-                    if self.is_closed():
-                        break
-
-                await self.poll_and_post()
-            except Exception as exc:
-                print(f"[Error] Poll cycle failed: {exc}")
-
-            if not self.config.scheduled_hours_utc:
-                await asyncio.sleep(self.config.poll_minutes * 60)
 
     async def fetch_feed(
         self,
@@ -486,7 +450,7 @@ class NewsBotClient(discord.Client):
         if not items:
             return None
 
-        lines = ["Latest dev links:"]
+        lines = ["Latest links:"]
         for item in items:
             lines.append(f"- {item['title']} <{item['url']}>")
 
@@ -495,45 +459,63 @@ class NewsBotClient(discord.Client):
             digest = digest[:1897].rstrip() + "..."
         return digest
 
+    @tasks.loop(time=UTC_POST_TIMES)
     async def poll_and_post(self) -> None:
-        channel = await self.get_post_channel()
-        if channel is None:
-            return
+        try:
+            channel = await self.get_post_channel()
+            if channel is None:
+                return
 
-        items_to_post = (await self.collect_new_items())[: self.config.max_posts_per_run]
-        if not items_to_post:
-            print("[Info] No new items to post")
-            return
+            items_to_post = (await self.collect_new_items())[: self.config.max_posts_per_run]
+            if not items_to_post:
+                print("[Info] No new items to post")
+                return
 
-        posted_records: List[Dict[str, Any]] = []
-        for index, item in enumerate(items_to_post):
-            try:
-                message = await channel.send(
-                    embed=self.build_embed(item),
-                    allowed_mentions=discord.AllowedMentions.none(),
-                )
-                record = {
-                    "source": item["source"],
-                    "title": item["title"],
-                    "url": item["url"],
-                    "canonical_url": item["canonical_url"],
-                    "published_at": item.get("published_at"),
-                    "posted_at": utc_now_iso(),
-                    "discord_message_id": str(message.id),
-                }
-                self.storage.record_post(record)
-                posted_records.append(record)
-                print(f"[Posted] {item['source']}: {item['title'][:80]}")
-            except Exception as exc:
-                print(f"[Error] Failed to post {item['title'][:80]}: {exc}")
+            posted_records: List[Dict[str, Any]] = []
+            for index, item in enumerate(items_to_post):
+                try:
+                    message = await channel.send(
+                        embed=self.build_embed(item),
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                    record = {
+                        "source": item["source"],
+                        "title": item["title"],
+                        "url": item["url"],
+                        "canonical_url": item["canonical_url"],
+                        "published_at": item.get("published_at"),
+                        "posted_at": utc_now_iso(),
+                        "discord_message_id": str(message.id),
+                    }
+                    self.storage.record_post(record)
+                    posted_records.append(record)
+                    print(f"[Posted] {item['source']}: {item['title'][:80]}")
+                except Exception as exc:
+                    print(f"[Error] Failed to post {item['title'][:80]}: {exc}")
 
-            if index < len(items_to_post) - 1:
-                await asyncio.sleep(self.config.post_delay_seconds)
+                if index < len(items_to_post) - 1:
+                    await asyncio.sleep(self.config.post_delay_seconds)
 
-        if self.config.post_text_digest and posted_records:
-            digest = self.build_digest(posted_records)
-            if digest:
-                await channel.send(
-                    digest,
-                    allowed_mentions=discord.AllowedMentions.none(),
-                )
+            if self.config.post_text_digest and posted_records:
+                digest = self.build_digest(posted_records)
+                if digest:
+                    await channel.send(
+                        digest,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+        except Exception as exc:
+            print(f"[Error] Poll cycle failed: {exc}")
+
+    @poll_and_post.before_loop
+    async def before_poll_and_post(self) -> None:
+        await self.wait_until_ready()
+
+
+def run_news_bot(config: NewsBotConfig) -> None:
+    token = os.getenv("DISCORD_TOKEN", "")
+    if not token:
+        raise SystemExit("ERROR: DISCORD_TOKEN not set in environment")
+    if config.channel_id == 0:
+        raise SystemExit("ERROR: CHANNEL_ID not set in environment")
+    client = NewsBotClient(config)
+    client.run(token)

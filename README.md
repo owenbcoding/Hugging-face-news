@@ -25,9 +25,7 @@ cp .env.example .env
 - **DISCORD_TOKEN**: your bot token (Discord Developer Portal → your app → Bot)
 - **CHANNEL_ID**: the *text channel ID* you want the bot to post in  
   (Discord Developer Mode ON → right-click channel → Copy Channel ID)
-- **SCHEDULED_HOURS_UTC**: comma-separated UTC posting hours for the Hugging Face bot (default: `9,17`)
-- **POLL_MINUTES**: fallback poll interval in minutes for bots that use interval-based scheduling
-- **MAX_POSTS_PER_RUN**: how many articles to post each poll (default: 3, newest first)
+- **MAX_POSTS_PER_RUN**: how many articles to post each run (default: 3, newest first). The bot runs twice daily at fixed UTC times (see Notes).
 - **POST_DELAY_SECONDS**: delay between posts in seconds (default: 5)
 - **ARCHIVE_PATH**: append-only `.jsonl` archive of every posted article
 - **DEDUPE_INDEX_PATH**: JSON dedupe index keyed by `sha256(canonical_url)`
@@ -90,10 +88,9 @@ Useful PM2 commands:
 
 ## Notes
 
-- The Hugging Face bot uses `SCHEDULED_HOURS_UTC` and defaults to `09:00 UTC` and `17:00 UTC` each day, posting only **new** articles (up to 3 per run).
+- Scheduling matches **dev-news-bot**: `discord.ext.tasks` runs at **09:00 UTC** and **17:00 UTC** each day (same as 09:00 / 17:00 GMT when the UK is on GMT). Each run posts at most **3** items from new feed entries (configurable via `MAX_POSTS_PER_RUN`).
 - It dedupes by `sha256(canonical_url)` instead of feed GUIDs, stores every posted link in an append-only `.jsonl` archive, and keeps a separate dedupe index.
 - Discord posts use embeds with a clickable title, cleaned summary, explicit `Read article` field, and a footer with source plus published date.
 - `/latestlinks` shows the last saved archive entries from Discord.
-- If the feed is unreachable, the bot logs the error and retries on the next poll.
-- Poll interval has a minimum of 60 minutes to prevent accidental spam.
+- If the feed is unreachable, the bot logs the error and retries at the next scheduled run.
 
