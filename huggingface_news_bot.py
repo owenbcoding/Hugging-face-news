@@ -18,7 +18,18 @@ from news_core import NewsBotConfig, run_news_bot
 
 load_dotenv()
 
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
+
+def _env_int(name: str, default: int = 0) -> int:
+    raw = (os.getenv(name) or "").strip().strip('"').strip("'")
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise SystemExit(f"ERROR: {name} must be an integer, got {raw!r}") from None
+
+
+CHANNEL_ID = _env_int("CHANNEL_ID", 0)
 MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "3"))
 POST_DELAY_SECONDS = int(os.getenv("POST_DELAY_SECONDS", "5"))
 ARCHIVE_PATH = os.getenv("ARCHIVE_PATH", "data/news_archive.jsonl")

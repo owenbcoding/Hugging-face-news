@@ -272,19 +272,19 @@ class NewsBotClient(discord.Client):
 
         channel = await self.get_post_channel()
         if channel is None:
+            # Do not disconnect: a bad CHANNEL_ID or cache timing should not take the bot offline.
             print(
                 f"ERROR: Cannot access channel {self.config.channel_id}. "
-                "Fix CHANNEL_ID and restart."
+                "Posts will be skipped until this is fixed (wrong ID, bot not in server, or missing access)."
             )
-            await self.close()
-            return
+            self._print_channel_diagnostics()
+        else:
+            print(f"✓ Target channel: #{channel.name}")
 
         if not self._commands_synced:
             synced = await self.tree.sync()
             self._commands_synced = True
             print(f"✓ Synced {len(synced)} application command(s)")
-
-        print(f"✓ Target channel: #{channel.name}")
 
         if not self.poll_and_post.is_running():
             self.poll_and_post.start()
@@ -512,7 +512,7 @@ class NewsBotClient(discord.Client):
 
 
 def run_news_bot(config: NewsBotConfig) -> None:
-    token = os.getenv("DISCORD_TOKEN", "")
+    token = (os.getenv("DISCORD_TOKEN") or "").strip()
     if not token:
         raise SystemExit("ERROR: DISCORD_TOKEN not set in environment")
     if config.channel_id == 0:
